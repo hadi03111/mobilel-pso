@@ -1,0 +1,1 @@
+export const money=n=>`PKR ${Number(n||0).toLocaleString()}`;
