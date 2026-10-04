@@ -588,217 +588,29 @@ export function NewRepair() {
 
 export function RepairDetail() {
   const { id } = useParams()
+  const { repairs, products, profile, updateRepair, useRepairPart, returnRepairPart, setRepairLabourCharge, requestHandover, users } = useApp()
+  const r = repairs.find(x => String(x.id) === String(id))
+  const [busy,setBusy]=useState(false),[partId,setPartId]=useState(''),[qty,setQty]=useState(1),[charge,setCharge]=useState(0),[labourCharge,setLabourCharge]=useState(r?.labourCharge||0),[cashier,setCashier]=useState('')
+  if(!r)return <><PageHead title="Repair Not Found" subtitle="The requested repair job could not be found."/><Card><div className="empty-inline">Repair {id} was not found.</div></Card></>
+  const role=profile?.role,isTech=role==='Technician',canWork=isTech||['Developer','Admin','Manager'].includes(role),availableParts=products.filter(p=>p.active!==false&&Number(p.qty)>0)
+  const activeCashiers=users.filter(u=>u.active!==false&&['Cashier','Manager','Admin','Developer'].includes(u.role))
+  const total=Number(r.total||0),paid=Number(r.paid||0),balance=Math.max(0,total-paid)
+  const act=async fn=>{try{setBusy(true);await fn()}catch(e){alert(e.message||String(e))}finally{setBusy(false)}}
+  const addPart=()=>{if(!partId)return alert('Select a part.');act(()=>useRepairPart(r.dbId,partId,Number(qty),Number(charge)))}
+  const saveLabour=()=>act(()=>setRepairLabourCharge(r.dbId,Number(labourCharge||0)));const handover=()=>{if(!cashier)return alert('Select receiving cashier.');act(()=>requestHandover(r.dbId,cashier))}
+  return <><PageHead title={`${r.id} · ${r.phone}`} subtitle={`${r.customer} · ${r.customerPhone||'No phone number'}`} actions={<><button className="btn ghost" type="button"><Printer size={17}/>Print</button>{canWork&&r.status==='Assigned'&&<button className="btn primary" disabled={busy} onClick={()=>act(()=>updateRepair(r.id,{status:'Repairing'}))}>Start Repair</button>}</>}/>
+  <div className="detail-grid"><Card><h3>Job Timeline</h3>{['Received','Assigned','Repairing','Ready for Handover','Completed','Delivered'].map((stage,i)=><div key={stage} className={`timeline ${stage===r.status?'current':''}`}><span>{i+1}</span><div><b>{stage}</b><small>{stage===r.status?'Current stage':'Workflow stage'}</small></div></div>)}</Card>
+  <div className="stack"><Card><h3>Device & Customer</h3><div className="info"><span>Customer</span><b>{r.customer}</b><span>Phone</span><b>{r.customerPhone||'—'}</b><span>Device</span><b>{r.phone}</b><span>IMEI</span><b>{r.imei||'—'}</b><span>Complaint</span><b>{r.issue}</b><span>Technician</span><b>{r.tech||'Unassigned'}</b><span>Deadline</span><b>{r.deadline||'—'}</b><span>Status</span><b><Badge>{r.status}</Badge></b></div></Card>
+  <Card><h3>Parts Used</h3>{(r.parts||[]).length===0?<p>No parts attached yet.</p>:(r.parts||[]).map((p,i)=><div className="ledgerline" key={p.id||`${p.name}-${i}`}><span><b>{p.name||p}</b>{p.qty?` × ${p.qty}`:''}</span><span>{p.state||'Used'}</span>{canWork&&p.id&&p.state==='Used'&&<button className="btn ghost sm" onClick={()=>{const reason=prompt('Reason for returning this part:');if(reason)act(()=>returnRepairPart(p.id,reason))}}>Return Part</button>}</div>)}</Card>
+  {canWork&&['Assigned','Repairing','Warranty'].includes(r.status)&&<Card><h3>Attach Part From Inventory</h3><div className="formgrid"><label>Part<select value={partId} onChange={e=>setPartId(e.target.value)}><option value="">Select available part</option>{availableParts.map(p=><option key={p.id} value={p.id}>{p.name} · Stock {p.qty}</option>)}</select></label><label>Quantity<input type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)}/></label><label>Customer charge<input type="number" min="0" value={charge} onChange={e=>setCharge(e.target.value)}/></label></div><button className="btn primary" disabled={busy} onClick={addPart}>Attach & Consume Part</button></Card>}
+  {canWork&&['Assigned','Repairing','Warranty'].includes(r.status)&&<Card><h3>Technician / Labour Charge</h3><p>Add the technician work charge separately from inventory parts. This amount is added to the customer repair bill.</p><div className="formgrid"><label>Labour / Work Charge<input type="number" min="0" step="1" value={labourCharge} onChange={e=>setLabourCharge(e.target.value)}/></label></div><button className="btn primary" disabled={busy} onClick={saveLabour}>Save Labour Charge</button></Card>}
+  {canWork&&['Assigned','Repairing','Warranty'].includes(r.status)&&<Card><h3>Finish Workshop & Handover</h3><p>Select the cashier who will physically receive the repaired device.</p><select value={cashier} onChange={e=>setCashier(e.target.value)}><option value="">Select cashier</option>{activeCashiers.map(u=><option key={u.id} value={u.id}>{u.name||u.full_name}</option>)}</select><button className="btn primary" disabled={busy||!cashier} onClick={handover}><Handshake size={17}/>Ready & Request Handover</button></Card>}
+  <Card><h3>Repair Billing</h3><div className="info"><span>Parts / Estimate</span><b>{money(Math.max(0,total-Number(r.labourCharge||0)))}</b><span>Technician / Labour</span><b>{money(Number(r.labourCharge||0))}</b><span>Total bill</span><b>{money(total)}</b><span>Paid</span><b>{money(paid)}</b><span>Balance</span><b>{money(balance)}</b></div>{['Cashier','Manager','Admin','Developer'].includes(role)&&['Ready for Handover','Completed'].includes(r.status)&&<Link className="btn primary" to="/repairs/return">Open Customer Return Desk</Link>}</Card></div></div></>
+}
 
-  const {
-    repairs,
-    updateRepair,
-  } = useApp()
-
-  const r = repairs.find(
-    (repair) =>
-      String(repair.id) === String(id)
-  )
-
-  const [updating, setUpdating] =
-    useState(false)
-
-  if (!r) {
-    return (
-      <>
-        <PageHead
-          title="Repair Not Found"
-          subtitle="The requested repair job could not be found."
-        />
-
-        <Card>
-          <div className="empty-inline">
-            Repair {id} was not found.
-          </div>
-        </Card>
-      </>
-    )
-  }
-
-  const timelineStages = [
-    'Received',
-    'Assigned',
-    'Repairing',
-    'Ready for Handover',
-    'Completed',
-    'Delivered',
-  ]
-
-  const total = Number(r.total || 0)
-  const paid = Number(r.paid || 0)
-
-  const balance = Math.max(
-    0,
-    total - paid
-  )
-
-  const handleMarkReady = async () => {
-    try {
-      setUpdating(true)
-
-      await updateRepair(id, {
-        status: 'Ready for Handover',
-      })
-    } catch (error) {
-      console.error(
-        'Unable to update repair:',
-        error
-      )
-
-      alert(
-        error?.message ||
-          'Unable to update repair status.'
-      )
-    } finally {
-      setUpdating(false)
-    }
-  }
-
-  return (
-    <>
-      <PageHead
-        title={`${r.id} · ${r.phone}`}
-        subtitle={`${r.customer} · ${
-          r.customerPhone || 'No phone number'
-        }`}
-        actions={
-          <>
-            <button
-              type="button"
-              className="btn ghost"
-            >
-              <Printer size={17} />
-              Print
-            </button>
-
-            {![
-              'Ready for Handover',
-              'Completed',
-              'Delivered',
-            ].includes(r.status) && (
-              <button
-                type="button"
-                className="btn primary"
-                disabled={updating}
-                onClick={handleMarkReady}
-              >
-                <Handshake size={17} />
-
-                {updating
-                  ? 'Updating...'
-                  : 'Mark Ready'}
-              </button>
-            )}
-          </>
-        }
-      />
-
-      <div className="detail-grid">
-        {/* TIMELINE */}
-
-        <Card>
-          <h3>Job Timeline</h3>
-
-          {timelineStages.map(
-            (stage, index) => (
-              <div
-                key={`timeline-${stage}`}
-                className={`timeline ${
-                  stage === r.status
-                    ? 'current'
-                    : ''
-                }`}
-              >
-                <span>
-                  {index + 1}
-                </span>
-
-                <div>
-                  <b>{stage}</b>
-
-                  <small>
-                    {stage === r.status
-                      ? 'Current stage'
-                      : 'Workflow stage'}
-                  </small>
-                </div>
-              </div>
-            )
-          )}
-        </Card>
-
-        <div className="stack">
-          {/* DEVICE INFORMATION */}
-
-          <Card>
-            <h3>Device</h3>
-
-            <div className="info">
-              <span>Customer</span>
-              <b>{r.customer}</b>
-
-              <span>Customer Phone</span>
-              <b>
-                {r.customerPhone || '—'}
-              </b>
-
-              <span>Device</span>
-              <b>{r.phone}</b>
-
-              <span>IMEI</span>
-              <b>{r.imei || '—'}</b>
-
-              <span>Complaint</span>
-              <b>{r.issue}</b>
-
-              <span>Technician</span>
-              <b>
-                {r.tech || 'Unassigned'}
-              </b>
-
-              <span>Deadline</span>
-              <b>
-                {r.deadline || '—'}
-              </b>
-
-              <span>Status</span>
-              <b>
-                <Badge>{r.status}</Badge>
-              </b>
-            </div>
-          </Card>
-
-          {/* BILLING */}
-
-          <Card>
-            <h3>Repair Billing</h3>
-
-            <div className="info">
-              <span>Parts used</span>
-
-              <b>
-                {Array.isArray(r.parts) &&
-                r.parts.length > 0
-                  ? r.parts.join(', ')
-                  : 'None yet'}
-              </b>
-
-              <span>Total bill</span>
-              <b>{money(total)}</b>
-
-              <span>Paid</span>
-              <b>{money(paid)}</b>
-
-              <span>Balance</span>
-              <b>{money(balance)}</b>
-            </div>
-          </Card>
-        </div>
-      </div>
-    </>
-  )
+export function CustomerReturn(){
+ const{handovers=[],repairs=[],profile,acceptHandover,collectRepairPayment,deliverRepair}=useApp();const[q,setQ]=useState(''),[busy,setBusy]=useState('');
+ const mine=handovers.filter(h=>!h.accepted_at||['Completed','Ready for Handover'].includes(h.repairStatus)).filter(h=>`${h.jobNo} ${h.customer} ${h.customerPhone} ${h.phone}`.toLowerCase().includes(q.toLowerCase()));
+ const perform=async(key,fn)=>{try{setBusy(key);await fn()}catch(e){alert(e.message||String(e))}finally{setBusy('')}};
+ return <><PageHead title="Customer Return & Payment" subtitle="Accept technician custody, collect repair payment, print the bill and return the device to the customer."/><div className="toolbar"><SearchBox value={q} onChange={setQ} placeholder="Search repair, customer or phone..."/></div><div className="stack">{mine.map(h=>{const r=repairs.find(x=>x.dbId===h.repair_id),total=Number(r?.total??h.total??0),paid=Number(r?.paid??h.paid??0),balance=Math.max(0,total-paid),accepted=!!h.accepted_at;return <Card key={h.id}><div className="techjob-head"><div><b>{h.jobNo}</b><h3>{h.phone}</h3><p>{h.customer} · From {h.fromName}</p></div><Badge>{accepted?'Cashier Accepted':'Waiting Acceptance'}</Badge></div><div className="info"><span>Total</span><b>{money(total)}</b><span>Paid</span><b>{money(paid)}</b><span>Balance</span><b>{money(balance)}</b></div><div className="split-actions">{!accepted&&<button className="btn primary" disabled={busy===h.id} onClick={()=>perform(h.id,()=>acceptHandover(h.id))}><Handshake size={17}/>Accept Device</button>}{accepted&&balance>0&&<button className="btn primary" disabled={busy===h.id} onClick={()=>{const raw=prompt(`Amount received (balance ${money(balance)}):`,String(balance));if(raw!==null&&Number(raw)>0)perform(h.id,()=>collectRepairPayment(h.repair_id,Math.min(Number(raw),balance),'Cash'))}}>{money(balance)} · Collect Cash</button>}{accepted&&balance===0&&r?.status==='Completed'&&<button className="btn primary" disabled={busy===h.id} onClick={()=>perform(h.id,()=>deliverRepair(h.repair_id))}><CheckCircle2 size={17}/>Return to Customer</button>}<button className="btn ghost" type="button" onClick={()=>window.print()}><Printer size={17}/>Print Bill</button></div></Card>})}{!mine.length&&<Card><div className="empty-inline">No repairs are waiting at the customer return desk.</div></Card>}</div></>
 }

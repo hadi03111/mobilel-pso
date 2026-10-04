@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 
 import { useApp } from '../context/AppContext'
+import { can } from '../lib/access'
 import {
   Badge,
   Card,
@@ -34,6 +35,7 @@ import {
 
 export function Dashboard() {
   const a = useApp()
+  const canSeeProfit = can(a.profile?.role, 'profit')
 
   const revenue = a.sales.reduce(
     (sum, sale) => sum + Number(sale.total || 0),
@@ -73,10 +75,6 @@ export function Dashboard() {
         subtitle="Live overview of your shop operations."
         actions={
           <>
-            <button className="btn ghost">
-              Export
-            </button>
-
             <Link className="btn primary" to="/pos">
               <ShoppingBag size={17} />
               New Sale
@@ -95,12 +93,17 @@ export function Dashboard() {
           icon={DollarSign}
         />
 
-        <Stat
+        {canSeeProfit ? <Stat
           label="Retail Profit"
           value={money(profit)}
           note="Gross retail profit"
           icon={ArrowUpRight}
-        />
+        /> : <Stat
+          label="Pending Orders"
+          value={a.sales.filter(x=>x.status==='Pending').length}
+          note="Orders awaiting checkout"
+          icon={ShoppingBag}
+        />}
 
         <Stat
           label="Active Repairs"
@@ -241,10 +244,10 @@ export function Dashboard() {
               <p>Workload and payable</p>
             </div>
 
-            <Link to="/technician-ledger">
+            {canSeeProfit && <Link to="/technician-ledger">
               Ledger
               <ChevronRight size={15} />
-            </Link>
+            </Link>}
           </div>
 
           {a.techs.length === 0 ? (
@@ -280,13 +283,8 @@ export function Dashboard() {
                   </div>
 
                   <div>
-                    <strong>
-                      {money(technician.balance || 0)}
-                    </strong>
-
-                    <small>
-                      {technician.rate || 0}% share
-                    </small>
+                    <strong>{canSeeProfit ? money(technician.balance || 0) : `${technician.active || 0} jobs`}</strong>
+                    <small>{canSeeProfit ? `${technician.rate || 0}% share` : technician.status}</small>
                   </div>
                 </div>
               )
@@ -463,7 +461,8 @@ export function Inventory() {
 ========================================================= */
 
 export function Suppliers() {
-  const { suppliers } = useApp()
+  const { suppliers, addSupplier } = useApp()
+  const [showSupplier,setShowSupplier]=useState(false)
 
   const outstanding = suppliers.reduce(
     (sum, supplier) =>
@@ -477,12 +476,14 @@ export function Suppliers() {
         title="Suppliers"
         subtitle="Wholesale partners, purchases and outstanding balances."
         actions={
-          <button className="btn primary">
+          <button className="btn primary" onClick={()=>setShowSupplier(true)}>
             <Plus size={17} />
             Add Supplier
           </button>
         }
       />
+
+      {showSupplier&&<Card><form className="formgrid" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await addSupplier({name:f.get('name'),phone:f.get('phone'),address:f.get('address')});setShowSupplier(false)}catch(err){alert(err.message)}}}><label>Supplier name<input name="name" required/></label><label>Phone<input name="phone"/></label><label>Address<input name="address"/></label><div className="row-actions"><button type="button" className="btn ghost" onClick={()=>setShowSupplier(false)}>Cancel</button><button type="submit" className="btn primary">Save Supplier</button></div></form></Card>}
 
       <div className="stats">
         <Stat
@@ -714,6 +715,7 @@ export function Expenses() {
 
 export function GenericAdmin({ type }) {
   const a = useApp()
+  const canSeeProfit = can(a.profile?.role, 'profit')
 
   const pageMap = {
     notifications: [
